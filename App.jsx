@@ -11,7 +11,13 @@ const demoDonors = [
 ];
 
 export default function App() {
-  const [requestText, setRequestText] = useState(initialText);
+  const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem('bloodlink_user') || 'null'); } catch { return null; } });
+  const [authMode, setAuthMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [showManual, setShowManual] = useState(false);
+  const [requestText, setRequestText] = useState('');
   const [bloodGroup, setBloodGroup] = useState('O+');
   const [units, setUnits] = useState('2');
   const [hospital, setHospital] = useState('City Care Hospital');
@@ -30,6 +36,22 @@ export default function App() {
     // Simplified illustrative filter only, not clinical compatibility validation.
     return demoDonors.filter(d => d.group === donorGroup && d.area.toLowerCase() === location.trim().toLowerCase());
   }, [matches, donorGroup, location]);
+
+  function handleAuth(e) {
+    e.preventDefault(); setAuthError('');
+    const mail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return setAuthError('Please enter a valid email address.');
+    if (password.length < 6) return setAuthError('Password must contain at least 6 characters.');
+    const accounts = JSON.parse(localStorage.getItem('bloodlink_accounts') || '{}');
+    if (authMode === 'register') {
+      if (accounts[mail]) return setAuthError('Account already exists. Please log in.');
+      accounts[mail] = password; localStorage.setItem('bloodlink_accounts', JSON.stringify(accounts));
+    } else if (accounts[mail] !== password) return setAuthError('Email/password incorrect. Create an account first if new.');
+    const current = { email: mail }; localStorage.setItem('bloodlink_user', JSON.stringify(current)); setUser(current);
+  }
+  function logout() { localStorage.removeItem('bloodlink_user'); setUser(null); setPassword(''); }
+
+  if (!user) return <div className="auth-shell"><header className="auth-top"><div className="brand"><div className="brand-mark">♥</div><div><strong>BloodLink <span>AI</span></strong><small>EMERGENCY DONOR COORDINATION</small></div></div><div className="live-pill"><i/> Secure access</div></header><main className="auth-layout"><section className="auth-intro"><div className="eyebrow">AI FOR SOCIETY & WELL-BEING</div><h1>Every second matters.<br/><em>Help begins with a connection.</em></h1><p>Sign in to create a blood request. Paste the full caption and Gemini AI can extract the blood group, units, hospital and locality.</p><div className="auth-benefits"><div><span>01</span><div><b>Describe the need</b><small>Write the complete requirement in your own words.</small></div></div><div><span>02</span><div><b>AI-assisted extraction</b><small>Review the details identified by Gemini.</small></div></div><div><span>03</span><div><b>Human-verified matching</b><small>Confirm availability with a hospital or blood bank.</small></div></div></div></section><section className="auth-card"><div className="auth-card-top"><div className="auth-heart">♥</div><span className="step">BLOODLINK ACCOUNT</span></div><h2>{authMode==='login'?'Welcome back':'Create account'}</h2><p className="auth-desc">{authMode==='login'?'Log in to continue to your dashboard.':'Register with your email and create a password.'}</p><form onSubmit={handleAuth}><label>Email address</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@gmail.com" required/><label>Password</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 6 characters" minLength="6" required/>{authError&&<div className="auth-error">{authError}</div>}<button className="primary auth-submit" type="submit">{authMode==='login'?'Log in':'Create account'} →</button></form><div className="auth-switch">{authMode==='login'?"Don't have an account?":'Already registered?'} <button onClick={()=>{setAuthMode(authMode==='login'?'register':'login');setAuthError('');}}>{authMode==='login'?'Create account':'Log in'}</button></div><div className="auth-safety"><p>Prototype authentication stores credentials in this browser only. Do not use a real or reused password. Production needs secure server-side authentication.</p></div></section></main><footer className="auth-footer">BloodLink AI · Syntax Syringes · CCET Bhilai <span>Hackathon prototype</span></footer></div>;
 
   async function parseRequest() {
     setLoading(true); setNotice('');
@@ -76,7 +98,7 @@ export default function App() {
   return <div className="app-shell">
     <header className="topbar">
       <div className="brand"><div className="brand-mark">♥</div><div><strong>BloodLink <span>AI</span></strong><small>EMERGENCY DONOR COORDINATION · DEMO</small></div></div>
-      <div className="live-pill"><i/> Prototype mode</div>
+      <div className="top-actions"><span className="user-email">{user.email}</span><button className="logout-btn" onClick={logout}>Log out ↗</button><div className="live-pill"><i/> Hackathon prototype</div></div>
     </header>
     <main>
       <section className="hero">
@@ -89,16 +111,12 @@ export default function App() {
       <div className="workspace">
         <section className="panel request-panel">
           <div className="panel-heading"><div><span className="step">01 / REQUEST</span><h2>Create blood request</h2></div><span className="icon">＋</span></div>
-          <label>Describe the emergency in your own words</label>
-          <textarea value={requestText} onChange={e=>setRequestText(e.target.value)} rows="4" placeholder="Example: Need 2 units of O positive blood in Bhilai..."/>
-          <div className="field-grid">
-            <div><label>Blood group</label><select value={bloodGroup} onChange={e=>setBloodGroup(e.target.value)}>{['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(g=><option key={g}>{g}</option>)}</select></div>
-            <div><label>Units required</label><input type="number" min="1" max="10" value={units} onChange={e=>setUnits(e.target.value)}/></div>
-            <div><label>Hospital / facility</label><input value={hospital} onChange={e=>setHospital(e.target.value)} placeholder="Hospital name"/></div>
-            <div><label>City / locality</label><input value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g. Bhilai"/></div>
-            <div className="full"><label>Urgency</label><select value={urgency} onChange={e=>setUrgency(e.target.value)}><option>Critical</option><option>Urgent</option><option>Planned</option></select></div>
-          </div>
-          <button className="primary" onClick={parseRequest} disabled={loading}>{loading?'Processing…':'✦  Parse request with Gemini'}</button>
+          <label>Full blood requirement caption <span className="required">*</span></label>
+          <p className="field-hint">Paste the complete message. Gemini AI will read it and extract blood group, units, hospital, city and urgency.</p>
+          <textarea className="caption-input" value={requestText} onChange={e=>{setRequestText(e.target.value);setParsed(false);}} rows="5" placeholder="Example: Urgently need 2 units of O positive blood at City Care Hospital, Bhilai today. Please help find donors nearby."/>
+          <button className="primary" onClick={parseRequest} disabled={loading}>{loading?'Reading full caption…':'✦  Read full caption with Gemini AI'}</button>
+          <button className="manual-toggle" onClick={()=>setShowManual(v=>!v)}>{showManual?'− Hide manual details':'＋ Or enter details manually'}</button>
+          {showManual && <div className="field-grid manual-fields"><div><label>Blood group</label><select value={bloodGroup} onChange={e=>setBloodGroup(e.target.value)}>{['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(g=><option key={g}>{g}</option>)}</select></div><div><label>Units required</label><input type="number" min="1" max="10" value={units} onChange={e=>setUnits(e.target.value)}/></div><div><label>Hospital / facility</label><input value={hospital} onChange={e=>setHospital(e.target.value)} placeholder="Hospital name"/></div><div><label>City / locality</label><input value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g. Bhilai"/></div><div className="full"><label>Urgency</label><select value={urgency} onChange={e=>setUrgency(e.target.value)}><option>Critical</option><option>Urgent</option><option>Planned</option></select></div><button className="secondary full" onClick={()=>{setParsed(true);setMissing([]);setAiLabel('Manual entry');setNotice('Manual details confirmed. Review before searching.');}}>Confirm manual details</button></div>}
           <p className="subtle">AI output is assistive; review all extracted fields before proceeding.</p>
           {parsed && <div className="parsed-box"><div className="parsed-title"><span>✓ Request structured</span><small>{aiLabel}</small></div>
             <div className="parsed-grid"><div><small>Blood group</small><b>{bloodGroup}</b></div><div><small>Units</small><b>{units || '—'}</b></div><div><small>Urgency</small><b>{urgency}</b></div><div><small>Location</small><b>{location || '—'}</b></div></div>
